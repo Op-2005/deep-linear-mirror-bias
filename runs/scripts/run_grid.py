@@ -9,9 +9,14 @@ import argparse
 import itertools
 import subprocess
 import sys
+import time
+import multiprocessing as mp
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple, Optional
 import pandas as pd
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from tqdm import tqdm
+import joblib
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent.parent
@@ -88,9 +93,9 @@ def generate_parameter_combinations(config: Dict[str, Any]) -> List[Dict[str, An
     return combinations
 
 
-def run_single_experiment(params: Dict[str, Any], output_base: str, tag: str = None) -> str:
+def check_experiment_exists(params: Dict[str, Any], output_base: str, tag: str = None) -> Optional[str]:
     """
-    Run a single experiment with given parameters.
+    Check if experiment already exists and return its directory path.
     
     Args:
         params: Parameter dictionary
@@ -98,8 +103,53 @@ def run_single_experiment(params: Dict[str, Any], output_base: str, tag: str = N
         tag: Optional tag for experiment
         
     Returns:
-        Path to experiment directory
+        Path to existing experiment directory if found, None otherwise
     """
+    # Create a unique identifier for this parameter combination
+    param_id = f"{params.get('potential', 'quadratic')}_L{params.get('depth', 1)}_p{params.get('p', 2.0)}_s{params.get('seed', 0)}"
+    if params.get('dataset') == 'mnist':
+        digits = params.get('digits', [0, 1])
+        param_id += f"_d{digits[0]}{digits[1]}"
+        if params.get('pca'):
+            param_id += f"_pca{params['pca']}"
+    
+    # Search for existing experiment directories
+    base_path = Path(output_base)
+    if tag:
+        search_pattern = f"*{tag}*{param_id}*"
+    else:
+        search_pattern = f"*{param_id}*"
+    
+    matching_dirs = list(base_path.glob(search_pattern))
+    
+    for exp_dir in matching_dirs:
+        results_file = exp_dir / "results.json"
+        if results_file.exists():
+            return str(exp_dir)
+    
+    return None
+
+
+def run_single_experiment(params: Dict[str, Any], output_base: str, tag: str = None, 
+                         skip_existing: bool = True) -> Tuple[bool, str]:
+    """
+    Run a single experiment with given parameters.
+    
+    Args:
+        params: Parameter dictionary
+        output_base: Base directory for outputs
+        tag: Optional tag for experiment
+        skip_existing: Whether to skip if experiment already exists
+        
+    Returns:
+        Tuple of (success, experiment_directory_path)
+    """
+    # Check if experiment already exists
+    if skip_existing:
+        existing_dir = check_experiment_exists(params, output_base, tag)
+        if existing_dir:
+            return True, existing_dir
+    
     # Build command
     cmd = [sys.executable, '-m', 'runs.scripts.train_synth']
     
@@ -137,18 +187,31 @@ def run_single_experiment(params: Dict[str, Any], output_base: str, tag: str = N
     if tag:
         cmd.extend(['--tag', tag])
     
-    print(f"Running: {' '.join(cmd)}")
-    
     # Run experiment
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        print(f"Experiment completed successfully")
-        return result.stdout.strip().split('\n')[-1].split(': ')[-1]  # Extract exp dir from output
+        exp_dir = result.stdout.strip().split('\n')[-1].split(': ')[-1]
+        return True, exp_dir
     except subprocess.CalledProcessError as e:
         print(f"Experiment failed with error: {e}")
         print(f"STDOUT: {e.stdout}")
         print(f"STDERR: {e.stderr}")
-        raise
+        return False, ""
+
+
+def run_experiment_worker(args: Tuple) -> Tuple[bool, str, Dict[str, Any]]:
+    """
+    Worker function for parallel experiment execution.
+    
+    Args:
+        args: Tuple of (params, output_base, tag, skip_existing)
+        
+    Returns:
+        Tuple of (success, experiment_directory_path, params)
+    """
+    params, output_base, tag, skip_existing = args
+    success, exp_dir = run_single_experiment(params, output_base, tag, skip_existing)
+    return success, exp_dir, params
 
 
 def collect_results(experiment_dirs: List[str]) -> pd.DataFrame:
@@ -188,9 +251,16 @@ def main():
     parser.add_argument('--tag', type=str, default=None,
                        help='Tag for experiment batch')
     parser.add_argument('--max_parallel', type=int, default=1,
-                       help='Maximum number of parallel experiments (currently unused)')
+                       help='Maximum number of parallel experiments')
+    parser.add_argument('--skip_existing', action='store_true', default=True,
+                       help='Skip experiments that already exist')
+    parser.add_argument('--force_rerun', action='store_true', default=False,
+                       help='Force rerun even if experiments exist')
     
     args = parser.parse_args()
+    
+    # Set skip_existing based on force_rerun
+    skip_existing = args.skip_existing and not args.force_rerun
     
     print(f"Loading grid configuration from {args.config}")
     config = parse_grid_config(args.config)
@@ -199,6 +269,8 @@ def main():
     combinations = generate_parameter_combinations(config)
     
     print(f"Total experiments to run: {len(combinations)}")
+    print(f"Parallel execution: {args.max_parallel} workers")
+    print(f"Skip existing experiments: {skip_existing}")
     
     # Create master experiment directory
     master_exp_dir = make_experiment_dir(base=args.output_base, tag=args.tag or "grid")
@@ -207,30 +279,93 @@ def main():
     save_json({
         'config': config,
         'combinations': combinations,
-        'total_experiments': len(combinations)
+        'total_experiments': len(combinations),
+        'parallel_workers': args.max_parallel,
+        'skip_existing': skip_existing
     }, Path(master_exp_dir) / "grid_config.json")
     
-    # Run experiments
+    # Prepare arguments for parallel execution
+    worker_args = []
+    for i, params in enumerate(combinations):
+        exp_tag = f"{args.tag}_exp_{i+1}" if args.tag else f"exp_{i+1}"
+        worker_args.append((params, args.output_base, exp_tag, skip_existing))
+    
+    # Run experiments with progress tracking
     experiment_dirs = []
     successful_experiments = 0
+    failed_experiments = 0
+    skipped_experiments = 0
     
-    for i, params in enumerate(combinations):
-        print(f"\n--- Running experiment {i+1}/{len(combinations)} ---")
-        print(f"Parameters: {params}")
+    start_time = time.time()
+    
+    if args.max_parallel > 1:
+        # Parallel execution
+        print(f"Starting parallel execution with {args.max_parallel} workers...")
         
-        try:
-            exp_dir = run_single_experiment(params, args.output_base, f"{args.tag}_exp_{i+1}" if args.tag else f"exp_{i+1}")
-            experiment_dirs.append(exp_dir)
-            successful_experiments += 1
-        except Exception as e:
-            print(f"Experiment {i+1} failed: {e}")
-            continue
+        with ProcessPoolExecutor(max_workers=args.max_parallel) as executor:
+            # Submit all jobs
+            future_to_params = {executor.submit(run_experiment_worker, args): args for args in worker_args}
+            
+            # Process completed jobs with progress bar
+            with tqdm(total=len(combinations), desc="Running experiments") as pbar:
+                for future in as_completed(future_to_params):
+                    success, exp_dir, params = future.result()
+                    
+                    if success:
+                        experiment_dirs.append(exp_dir)
+                        if exp_dir and Path(exp_dir).exists():
+                            results_file = Path(exp_dir) / "results.json"
+                            if results_file.exists():
+                                successful_experiments += 1
+                            else:
+                                skipped_experiments += 1
+                        else:
+                            skipped_experiments += 1
+                    else:
+                        failed_experiments += 1
+                    
+                    pbar.update(1)
+                    pbar.set_postfix({
+                        'Success': successful_experiments,
+                        'Failed': failed_experiments,
+                        'Skipped': skipped_experiments
+                    })
+    else:
+        # Sequential execution
+        print("Starting sequential execution...")
+        
+        for i, (params, output_base, tag, skip_existing) in enumerate(tqdm(worker_args, desc="Running experiments")):
+            print(f"\n--- Running experiment {i+1}/{len(combinations)} ---")
+            print(f"Parameters: {params}")
+            
+            success, exp_dir = run_single_experiment(params, output_base, tag, skip_existing)
+            
+            if success:
+                experiment_dirs.append(exp_dir)
+                if exp_dir and Path(exp_dir).exists():
+                    results_file = Path(exp_dir) / "results.json"
+                    if results_file.exists():
+                        successful_experiments += 1
+                    else:
+                        skipped_experiments += 1
+                else:
+                    skipped_experiments += 1
+            else:
+                failed_experiments += 1
     
-    print(f"\nCompleted {successful_experiments}/{len(combinations)} experiments successfully")
+    elapsed_time = time.time() - start_time
+    
+    print(f"\n=== Grid Execution Summary ===")
+    print(f"Total experiments: {len(combinations)}")
+    print(f"Successful: {successful_experiments}")
+    print(f"Failed: {failed_experiments}")
+    print(f"Skipped (already existed): {skipped_experiments}")
+    print(f"Total time: {elapsed_time:.2f} seconds")
+    print(f"Average time per experiment: {elapsed_time/len(combinations):.2f} seconds")
     
     # Collect results
     if experiment_dirs:
-        print("Collecting results...")
+        print("\nCollecting results...")
         results_df = collect_results(experiment_dirs)
         
         # Save master results
@@ -248,6 +383,19 @@ def main():
             print(summary)
     else:
         print("No successful experiments to collect results from")
+    
+    # Save execution summary
+    execution_summary = {
+        'total_experiments': len(combinations),
+        'successful_experiments': successful_experiments,
+        'failed_experiments': failed_experiments,
+        'skipped_experiments': skipped_experiments,
+        'execution_time_seconds': elapsed_time,
+        'parallel_workers': args.max_parallel,
+        'skip_existing': skip_existing
+    }
+    
+    save_json(execution_summary, Path(master_exp_dir) / "execution_summary.json")
     
     print(f"\nGrid experiment batch completed. Master directory: {master_exp_dir}")
 

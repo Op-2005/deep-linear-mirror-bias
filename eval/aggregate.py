@@ -43,20 +43,28 @@ def load_experiment_results(experiment_dirs: List[str]) -> pd.DataFrame:
 def aggregate_by_parameters(results_df: pd.DataFrame, 
                           groupby_cols: List[str] = None) -> pd.DataFrame:
     """
-    Aggregate results by parameter groups.
+    Aggregate results by parameter groups with comprehensive statistics.
     
     Args:
         results_df: DataFrame with experiment results
-        groupby_cols: Columns to group by (default: potential, depth, p)
+        groupby_cols: Columns to group by (default: potential, p, depth, dataset, digits, pca)
         
     Returns:
         Aggregated DataFrame with summary statistics
     """
     if groupby_cols is None:
+        # Default grouping columns for comprehensive analysis
         groupby_cols = ['potential', 'depth']
-        # Add 'p' if it exists in the data
+        
+        # Add conditional grouping columns
         if 'p' in results_df.columns:
             groupby_cols.append('p')
+        if 'dataset' in results_df.columns:
+            groupby_cols.append('dataset')
+        if 'digits' in results_df.columns:
+            groupby_cols.append('digits')
+        if 'pca_components' in results_df.columns:
+            groupby_cols.append('pca_components')
     
     # Only use columns that exist
     groupby_cols = [col for col in groupby_cols if col in results_df.columns]
@@ -78,12 +86,12 @@ def aggregate_by_parameters(results_df: pd.DataFrame,
         print("No metrics to aggregate found")
         return results_df
     
-    # Aggregate with multiple statistics
+    # Aggregate with comprehensive statistics
     agg_dict = {}
     for metric in metrics_to_aggregate:
-        agg_dict[metric] = ['mean', 'std', 'min', 'max', 'count']
+        agg_dict[metric] = ['mean', 'std', 'min', 'max', 'count', 'median']
     
-    # Add seed count
+    # Add seed count and other metadata
     if 'seed' in results_df.columns:
         agg_dict['seed'] = 'nunique'
     
@@ -91,6 +99,14 @@ def aggregate_by_parameters(results_df: pd.DataFrame,
     
     # Flatten column names
     aggregated.columns = ['_'.join(col).strip() for col in aggregated.columns.values]
+    
+    # Add coefficient of variation (std/mean) for key metrics
+    for metric in metrics_to_aggregate:
+        mean_col = f"{metric}_mean"
+        std_col = f"{metric}_std"
+        if mean_col in aggregated.columns and std_col in aggregated.columns:
+            cv_col = f"{metric}_cv"
+            aggregated[cv_col] = aggregated[std_col] / aggregated[mean_col].abs()
     
     return aggregated
 
@@ -206,6 +222,103 @@ def generate_summary_table(results_df: pd.DataFrame,
     print(f"Summary table saved to {output_path}")
 
 
+def generate_latex_tables(results_df: pd.DataFrame, output_dir: str) -> None:
+    """
+    Generate comprehensive LaTeX tables for paper inclusion.
+    
+    Args:
+        results_df: DataFrame with experiment results
+        output_dir: Directory to save LaTeX tables
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Table 1: Main results by potential and depth
+    if 'potential' in results_df.columns and 'depth' in results_df.columns:
+        main_table = results_df.groupby(['potential', 'depth']).agg({
+            'final_margin': ['mean', 'std'],
+            'angle_to_svm': ['mean', 'std'],
+            'angle_to_logreg': ['mean', 'std'],
+            'norm_balance': ['mean', 'std']
+        })
+        
+        # Flatten column names and format
+        main_table.columns = ['_'.join(col).strip() for col in main_table.columns.values]
+        main_table = main_table.round(3)
+        
+        latex_main = main_table.to_latex(
+            caption='Mirror Descent Results by Potential Function and Network Depth',
+            label='tab:md_main_results',
+            escape=False
+        )
+        
+        with open(output_dir / "main_results.tex", 'w') as f:
+            f.write(latex_main)
+    
+    # Table 2: Statistical significance tests
+    if 'potential' in results_df.columns:
+        significance_table = []
+        potentials = results_df['potential'].unique()
+        
+        for i, pot1 in enumerate(potentials):
+            for j, pot2 in enumerate(potentials):
+                if i < j:
+                    data1 = results_df[results_df['potential'] == pot1]['final_margin']
+                    data2 = results_df[results_df['potential'] == pot2]['final_margin']
+                    
+                    # Simple t-test (assuming normal distribution)
+                    from scipy import stats
+                    try:
+                        t_stat, p_value = stats.ttest_ind(data1, data2)
+                        significance_table.append({
+                            'Potential 1': pot1,
+                            'Potential 2': pot2,
+                            'Mean Diff': data1.mean() - data2.mean(),
+                            't-statistic': t_stat,
+                            'p-value': p_value,
+                            'Significant': 'Yes' if p_value < 0.05 else 'No'
+                        })
+                    except:
+                        pass
+        
+        if significance_table:
+            sig_df = pd.DataFrame(significance_table)
+            latex_sig = sig_df.to_latex(
+                caption='Statistical Significance Tests for Different Potentials',
+                label='tab:md_significance',
+                float_format='%.4f',
+                index=False
+            )
+            
+            with open(output_dir / "significance_tests.tex", 'w') as f:
+                f.write(latex_sig)
+    
+    # Table 3: MNIST results if available
+    if 'dataset' in results_df.columns and 'mnist' in results_df['dataset'].values:
+        mnist_results = results_df[results_df['dataset'] == 'mnist']
+        
+        if 'digits' in mnist_results.columns:
+            mnist_table = mnist_results.groupby(['potential', 'digits']).agg({
+                'train_accuracy': ['mean', 'std'],
+                'val_accuracy': ['mean', 'std'],
+                'final_margin': ['mean', 'std']
+            })
+            
+            mnist_table.columns = ['_'.join(col).strip() for col in mnist_table.columns.values]
+            mnist_table = mnist_table.round(3)
+            
+            latex_mnist = mnist_table.to_latex(
+                caption='MNIST Binary Classification Results',
+                label='tab:md_mnist_results',
+                escape=False
+            )
+            
+            with open(output_dir / "mnist_results.tex", 'w') as f:
+                f.write(latex_mnist)
+    
+    print(f"LaTeX tables saved to {output_dir}")
+
+
 def compare_potentials(results_df: pd.DataFrame) -> Dict[str, Any]:
     """
     Compare different potential functions.
@@ -309,8 +422,23 @@ def generate_comprehensive_report(results_df: pd.DataFrame, output_dir: str) -> 
     # 8. Generate LaTeX tables
     try:
         generate_summary_table(results_df, output_dir / "summary_table.tex", format='latex')
+        generate_latex_tables(results_df, output_dir / "latex_tables")
     except Exception as e:
-        print(f"Failed to generate LaTeX table: {e}")
+        print(f"Failed to generate LaTeX tables: {e}")
+    
+    # 9. Generate per-condition JSONs for reproducibility
+    if 'potential' in results_df.columns and 'depth' in results_df.columns:
+        conditions_dir = output_dir / "per_condition_results"
+        conditions_dir.mkdir(exist_ok=True)
+        
+        for (potential, depth), group in results_df.groupby(['potential', 'depth']):
+            condition_name = f"{potential}_depth_{depth}"
+            condition_file = conditions_dir / f"{condition_name}.json"
+            
+            # Convert to JSON-serializable format
+            condition_data = group.to_dict('records')
+            with open(condition_file, 'w') as f:
+                json.dump(condition_data, f, indent=2, default=str)
     
     print(f"Comprehensive report generated in {output_dir}")
 

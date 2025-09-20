@@ -43,9 +43,9 @@ deep-linear-mirror-bias/
 
 ## Experiments
 
-### Phase 2: Research-Grade Experimental Framework
+### Phase 3: Systematic Experimentation & Analysis Framework
 
-This repository now supports systematic experiments with automatic logging, result aggregation, and visualization. Each experiment is automatically organized in timestamped directories with comprehensive metrics tracking.
+This repository now supports comprehensive systematic experimentation with parallel execution, automated analysis, and publication-ready figure generation. The framework provides complete pipelines from experiment execution to paper-ready results.
 
 ### Single Experiment Examples
 
@@ -67,42 +67,63 @@ python -m runs.scripts.train_synth --dataset mnist --digits 3 5 \
   --potential quadratic --L 3 --lr 0.01 --epochs 30 --seed 0
 ```
 
-### Grid Experiments
+### Phase 3: Complete Analysis Workflow
 
-**Synthetic Grid:**
+**Step 1: Run Systematic Experiments**
 ```bash
-# Run systematic synthetic experiments
-python -m runs.scripts.run_grid --config runs/configs/synth_grid.yaml
+# Run synthetic potential comparison (192 experiments)
+python -m runs.scripts.run_grid --config runs/configs/synthetic_potentials.yaml \
+  --tag synth_bias --max_parallel 4
 
-# Quick test with minimal parameters
-python -m runs.scripts.run_grid --config runs/configs/quick_test.yaml
+# Run MNIST digit pair experiments (96 experiments)  
+python -m runs.scripts.run_grid --config runs/configs/mnist_pairs.yaml \
+  --tag mnist_bias --max_parallel 4
+
+# Quick debug test (4 experiments)
+python -m runs.scripts.run_grid --config runs/configs/quick_debug.yaml \
+  --tag debug_test
 ```
 
-**MNIST Grid:**
+**Step 2: Automated Analysis Pipeline**
 ```bash
-# Run systematic MNIST experiments
-python -m runs.scripts.run_grid --config runs/configs/mnist_grid.yaml
+# Complete analysis: aggregation + plots + report
+python -m analysis.run_analysis --input_dir runs_out/20250319_synth_bias \
+  --output_dir analysis_results/synth_bias
+
+# MNIST analysis
+python -m analysis.run_analysis --input_dir runs_out/20250319_mnist_bias \
+  --output_dir analysis_results/mnist_bias
 ```
 
-### Result Aggregation and Analysis
+### Advanced Features
 
-**Aggregate Results:**
+**Parallel Execution with Progress Tracking:**
 ```bash
-# Aggregate results from experiment directory
-python -m eval.aggregate --input_dir runs_out/20241201_143022_grid \
-  --output_dir analysis_results
+# Run with 8 parallel workers and progress bars
+python -m runs.scripts.run_grid --config runs/configs/synthetic_potentials.yaml \
+  --max_parallel 8 --tag parallel_test
 ```
 
-**Generate Publication Plots:**
-```python
-from eval.plotting import create_publication_plots
-import pandas as pd
+**Resume/Restart Logic:**
+```bash
+# Skip existing experiments (default behavior)
+python -m runs.scripts.run_grid --config runs/configs/synthetic_potentials.yaml \
+  --skip_existing
 
-# Load aggregated results
-results_df = pd.read_csv('analysis_results/aggregated_results.csv')
+# Force rerun all experiments
+python -m runs.scripts.run_grid --config runs/configs/synthetic_potentials.yaml \
+  --force_rerun
+```
 
-# Create publication-ready plots
-create_publication_plots(results_df, 'publication_figures/')
+**Custom Analysis:**
+```bash
+# Skip plots for faster analysis
+python -m analysis.run_analysis --input_dir runs_out/20250319_synth_bias \
+  --output_dir analysis_results/synth_bias --skip_plots
+
+# Skip LaTeX tables
+python -m analysis.run_analysis --input_dir runs_out/20250319_synth_bias \
+  --output_dir analysis_results/synth_bias --skip_tables
 ```
 
 ### Available Potentials
@@ -123,7 +144,7 @@ create_publication_plots(results_df, 'publication_figures/')
 
 ### Output Organization
 
-Each experiment creates a timestamped directory with:
+**Individual Experiments:**
 ```
 runs_out/20241201_143022_experiment_name/
 ├── config.yaml              # Experiment configuration
@@ -137,9 +158,37 @@ runs_out/20241201_143022_experiment_name/
     └── metrics_history.jsonl
 ```
 
-Grid experiments additionally create:
-- `master_results.csv`: All results in one table
-- `grid_config.json`: Grid configuration used
+**Grid Experiments:**
+```
+runs_out/20241201_143022_grid_tag/
+├── grid_config.json         # Grid specification
+├── execution_summary.json   # Execution statistics
+├── tables/master_results.csv    # All experiments in one table
+└── [individual experiment directories]
+```
+
+**Analysis Results:**
+```
+analysis_results/experiment_tag/
+├── analysis_report.md           # Automated Markdown report
+├── analysis_metadata.json       # Analysis metadata
+├── figures/                     # Publication-ready plots (PNG + PDF)
+│   ├── margins_by_parameters.png
+│   ├── heatmaps.png
+│   ├── margin_distributions.png
+│   └── [other figures]
+├── tables/                      # CSV data tables
+│   ├── aggregated_results.csv
+│   ├── angle_analysis.csv
+│   └── [other tables]
+├── latex_tables/                # LaTeX tables for papers
+│   ├── main_results.tex
+│   ├── significance_tests.tex
+│   └── [other tables]
+└── per_condition_results/       # JSON files per condition
+    ├── quadratic_depth_1.json
+    └── [other conditions]
+```
 
 ## Citation
 

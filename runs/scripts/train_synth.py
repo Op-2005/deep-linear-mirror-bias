@@ -112,7 +112,9 @@ def train_model(model: nn.Module,
         
         # Forward pass
         outputs = model(X_train)
-        loss = criterion(outputs.squeeze(), y_train)
+        # Convert targets from [-1, 1] to [0, 1] for BCE loss
+        y_train_bce = (y_train + 1) / 2.0
+        loss = criterion(outputs.squeeze(), y_train_bce)
         
         # Backward pass
         loss.backward()
@@ -131,7 +133,9 @@ def train_model(model: nn.Module,
                 
                 # Validation metrics
                 val_outputs = model(X_val)
-                val_loss = criterion(val_outputs.squeeze(), y_val)
+                # Convert validation targets from [-1, 1] to [0, 1] for BCE loss
+                y_val_bce = (y_val + 1) / 2.0
+                val_loss = criterion(val_outputs.squeeze(), y_val_bce)
                 epoch_metrics['val_loss'] = val_loss.item()
                 epoch_metrics['val_accuracy'] = torch.mean((torch.sign(val_outputs.squeeze()) == y_val).float()).item()
                 
@@ -298,8 +302,8 @@ def main():
         normalize_md=args.normalize_md
     )
     
-    # Loss function
-    criterion = nn.HingeEmbeddingLoss(margin=1.0)
+    # Loss function - use BCE with logits for binary classification
+    criterion = nn.BCEWithLogitsLoss()
     
     print(f"Training {type(model).__name__} with {args.potential} potential...")
     
@@ -422,6 +426,7 @@ def plot_decision_boundary(model: nn.Module,
     with torch.no_grad():
         if hasattr(model, 'effective_weight'):
             u = model.effective_weight()
+            u = u.flatten()  # Ensure u is the right shape
             model_pred = grid_points @ u
         else:
             model_pred = model(grid_points).squeeze()

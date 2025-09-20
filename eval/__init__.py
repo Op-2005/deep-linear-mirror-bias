@@ -6,9 +6,12 @@ their implicit bias properties across different optimization methods.
 """
 
 from .metrics import (
-    compute_margin,
-    compute_angles,
-    compute_alignment,
+    margin,
+    angle,
+    angles_to_baselines,
+    layer_alignment,
+    norm_balance,
+    ntk_drift,
     compute_spectral_properties,
     analyze_implicit_bias,
     MetricsCollector

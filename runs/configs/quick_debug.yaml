@@ -1,0 +1,23 @@
+# Quick debug configuration for rapid testing
+# Minimal parameter combinations for fast validation of the framework
+
+dataset: synthetic
+input_dim: 2
+n_samples: 128
+separation: 2.0
+noise: 0.1
+epochs: 50
+lr: 0.1
+log_frequency: 5
+
+# Minimal grid for quick testing
+potentials: [quadratic, lp]
+p_values: [2.0]  # Only used for lp potential
+depths: [1, 2]
+seeds: [0]  # Single seed for speed
+
+# Notes:
+# - This will create 2 * 1 * 2 * 1 = 4 experiments total
+# - Should complete in under 2 minutes
+# - Useful for validating the framework before running large experiments
+# - Good for development and debugging

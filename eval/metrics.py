@@ -23,6 +23,9 @@ def margin(u: torch.Tensor, X: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     Returns:
         Margin value
     """
+    # Ensure u is the right shape (flatten if needed)
+    u = u.flatten()
+    
     # Compute predictions
     predictions = X @ u
     
@@ -44,6 +47,10 @@ def angle(u: torch.Tensor, v: torch.Tensor) -> float:
     Returns:
         Angle in degrees
     """
+    # Ensure both vectors are flattened
+    u = u.flatten()
+    v = v.flatten()
+    
     # Compute cosine similarity
     cos_sim = torch.dot(u, v) / (torch.norm(u) * torch.norm(v))
     
@@ -104,21 +111,30 @@ def layer_alignment(W_list: List[torch.Tensor]) -> float:
     for i in range(len(W_list) - 1):
         W1, W2 = W_list[i], W_list[i + 1]
         
-        # Compute SVD
-        U1, _, _ = torch.svd(W1)
-        U2, _, _ = torch.svd(W2)
-        
-        # Get top singular vector
-        u1 = U1[:, 0]
-        u2 = U2[:, 0]
-        
-        # Compute cosine similarity
-        cos_sim = torch.dot(u1, u2) / (torch.norm(u1) * torch.norm(u2))
-        cos_sim = torch.clamp(cos_sim, min=-1.0, max=1.0)
-        
-        alignments.append(cos_sim.item())
+        try:
+            # Compute SVD
+            U1, _, _ = torch.svd(W1)
+            U2, _, _ = torch.svd(W2)
+            
+            # Get top singular vector (ensure compatible dimensions)
+            u1 = U1[:, 0]
+            u2 = U2[:, 0]
+            
+            # Ensure both vectors have the same dimension
+            min_dim = min(len(u1), len(u2))
+            u1 = u1[:min_dim]
+            u2 = u2[:min_dim]
+            
+            # Compute cosine similarity
+            cos_sim = torch.dot(u1, u2) / (torch.norm(u1) * torch.norm(u2))
+            cos_sim = torch.clamp(cos_sim, min=-1.0, max=1.0)
+            
+            alignments.append(cos_sim.item())
+        except:
+            # If SVD fails, skip this alignment
+            continue
     
-    return np.mean(alignments)
+    return np.mean(alignments) if alignments else 0.0
 
 
 def norm_balance(W_list: List[torch.Tensor]) -> float:

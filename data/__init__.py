@@ -12,12 +12,16 @@ from .synthetic import (
     generate_multiclass_data,
     DataGenerator
 )
-from .mnist import (
-    load_mnist_binary,
-    preprocess_mnist,
-    create_mnist_subset,
-    MNISTDataManager
-)
+try:
+    from .mnist import (
+        load_mnist_binary,
+        preprocess_mnist,
+        create_mnist_subset,
+        MNISTDataManager
+    )
+except ImportError:
+    # MNIST functionality not available
+    pass
 
 __all__ = [
     'generate_gaussian_data',

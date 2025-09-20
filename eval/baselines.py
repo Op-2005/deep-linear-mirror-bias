@@ -54,7 +54,7 @@ def logreg_gd(X: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     y_np = y.numpy()
     
     # Fit logistic regression without penalty
-    logreg = LogisticRegression(penalty='none', solver='saga', max_iter=10000)
+    logreg = LogisticRegression(penalty=None, solver='saga', max_iter=10000)
     logreg.fit(X_np, y_np)
     
     # Get weight vector and normalize

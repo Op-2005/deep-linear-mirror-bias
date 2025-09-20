@@ -1,0 +1,24 @@
+# Comprehensive synthetic data experiments
+# Systematic exploration of potential functions × depths × p-values × seeds
+
+dataset: synthetic
+input_dim: 2
+n_samples: 512
+separation: 3.0
+noise: 0.2
+epochs: 1000
+lr: 0.05
+log_frequency: 10
+
+# Grid parameters - comprehensive exploration
+potentials: [quadratic, lp, layer_scaled, scaled]
+p_values: [1.5, 2.0, 3.0]  # Only used for lp potential
+depths: [1, 2, 3, 4]
+seeds: [0, 1, 2, 3]  # Multiple seeds for statistical significance
+
+# Notes:
+# - This will create 4 * 3 * 4 * 4 = 192 experiments total
+# - Each potential function tested across multiple depths and p-values
+# - Multiple seeds ensure statistical robustness
+# - Expected runtime: 2-4 hours depending on hardware
+# - Produces comprehensive results for potential function comparison

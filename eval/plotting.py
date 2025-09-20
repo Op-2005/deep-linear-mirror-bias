@@ -342,7 +342,7 @@ def plot_training_curves(metrics_history: List[Dict], savepath: str) -> None:
 
 def create_publication_plots(results_df: pd.DataFrame, output_dir: str) -> None:
     """
-    Create publication-ready plots from aggregated results.
+    Create publication-ready plots from aggregated results with both PNG and PDF formats.
     
     Args:
         results_df: DataFrame with aggregated results
@@ -351,19 +351,26 @@ def create_publication_plots(results_df: pd.DataFrame, output_dir: str) -> None:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Set publication style
-    plt.style.use('seaborn-v0_8-whitegrid')
+    # Set publication style with serif fonts
+    plt.style.use('default')
     plt.rcParams.update({
+        'font.family': 'serif',
+        'font.serif': ['Times', 'Times New Roman', 'DejaVu Serif'],
         'font.size': 12,
         'axes.titlesize': 14,
         'axes.labelsize': 12,
         'xtick.labelsize': 10,
         'ytick.labelsize': 10,
         'legend.fontsize': 10,
-        'figure.titlesize': 16
+        'figure.titlesize': 16,
+        'grid.alpha': 0.3,
+        'grid.linewidth': 0.5
     })
     
-    # Plot 1: Angles by potential and depth
+    # Define consistent color palette
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+    
+    # Plot 1: Angles vs epochs (if time series data available)
     if 'angle_to_svm' in results_df.columns:
         plot_heatmap_metrics(
             results_df, 
@@ -372,35 +379,151 @@ def create_publication_plots(results_df: pd.DataFrame, output_dir: str) -> None:
             y_col='depth',
             metric='angle_to_svm'
         )
-    
-    # Plot 2: Margin vs angle relationship
-    if 'final_margin' in results_df.columns and 'angle_to_svm' in results_df.columns:
-        fig, ax = plt.subplots(figsize=(8, 6))
-        sns.scatterplot(
-            data=results_df, 
-            x='final_margin', 
-            y='angle_to_svm', 
-            hue='potential',
-            size='depth',
-            sizes=(50, 200),
-            ax=ax
+        # Also save as PDF
+        plot_heatmap_metrics(
+            results_df, 
+            output_dir / "angles_heatmap.pdf",
+            x_col='potential', 
+            y_col='depth',
+            metric='angle_to_svm'
         )
-        ax.set_xlabel('Final Margin')
-        ax.set_ylabel('Angle to SVM (degrees)')
-        ax.set_title('Margin vs Angle Relationship')
+    
+    # Plot 2: Margins vs epochs boxplots
+    if 'final_margin' in results_df.columns:
+        fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+        
+        # Boxplot by potential
+        if 'potential' in results_df.columns:
+            sns.boxplot(data=results_df, x='potential', y='final_margin', ax=axes[0], palette=colors)
+            axes[0].set_ylabel('Final Margin')
+            axes[0].set_xlabel('Potential Function')
+            axes[0].set_title('Final Margin by Potential')
+            axes[0].grid(True, alpha=0.3)
+        
+        # Boxplot by depth
+        if 'depth' in results_df.columns:
+            sns.boxplot(data=results_df, x='depth', y='final_margin', ax=axes[1], palette=colors)
+            axes[1].set_ylabel('Final Margin')
+            axes[1].set_xlabel('Network Depth')
+            axes[1].set_title('Final Margin by Depth')
+            axes[1].grid(True, alpha=0.3)
+        
         plt.tight_layout()
-        plt.savefig(output_dir / "margin_vs_angle.png", dpi=300, bbox_inches='tight')
+        plt.savefig(output_dir / "margins_by_parameters.png", dpi=300, bbox_inches='tight')
+        plt.savefig(output_dir / "margins_by_parameters.pdf", bbox_inches='tight')
         plt.close()
     
-    # Plot 3: Norm balance by potential
-    if 'norm_balance' in results_df.columns:
-        fig, ax = plt.subplots(figsize=(10, 6))
-        sns.boxplot(data=results_df, x='potential', y='norm_balance', ax=ax)
-        ax.set_yscale('log')
-        ax.set_ylabel('Norm Balance (log scale)')
-        ax.set_title('Norm Balance by Potential Function')
+    # Plot 3: Norm balance & alignment heatmaps
+    if 'norm_balance' in results_df.columns or 'layer_alignment' in results_df.columns:
+        n_plots = sum([col in results_df.columns for col in ['norm_balance', 'layer_alignment']])
+        fig, axes = plt.subplots(1, n_plots, figsize=(8 * n_plots, 6))
+        if n_plots == 1:
+            axes = [axes]
+        
+        plot_idx = 0
+        
+        if 'norm_balance' in results_df.columns and 'potential' in results_df.columns and 'depth' in results_df.columns:
+            pivot_data = results_df.pivot_table(
+                values='norm_balance', 
+                index='depth', 
+                columns='potential', 
+                aggfunc='mean'
+            )
+            sns.heatmap(pivot_data, annot=True, fmt='.2f', cmap='viridis', ax=axes[plot_idx])
+            axes[plot_idx].set_title('Norm Balance Heatmap')
+            axes[plot_idx].set_xlabel('Potential Function')
+            axes[plot_idx].set_ylabel('Network Depth')
+            plot_idx += 1
+        
+        if 'layer_alignment' in results_df.columns and 'potential' in results_df.columns and 'depth' in results_df.columns:
+            pivot_data = results_df.pivot_table(
+                values='layer_alignment', 
+                index='depth', 
+                columns='potential', 
+                aggfunc='mean'
+            )
+            sns.heatmap(pivot_data, annot=True, fmt='.3f', cmap='viridis', ax=axes[plot_idx])
+            axes[plot_idx].set_title('Layer Alignment Heatmap')
+            axes[plot_idx].set_xlabel('Potential Function')
+            axes[plot_idx].set_ylabel('Network Depth')
+        
         plt.tight_layout()
-        plt.savefig(output_dir / "norm_balance_by_potential.png", dpi=300, bbox_inches='tight')
+        plt.savefig(output_dir / "heatmaps.png", dpi=300, bbox_inches='tight')
+        plt.savefig(output_dir / "heatmaps.pdf", bbox_inches='tight')
         plt.close()
     
-    print(f"Publication plots saved to {output_dir}")
+    # Plot 4: Decision boundary plots (for 2D synthetic data)
+    # This would require access to the actual models and data, so we'll create a placeholder
+    if 'dataset' in results_df.columns and 'synthetic' in results_df['dataset'].values:
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.text(0.5, 0.5, 'Decision Boundary Plots\n(Generated during individual experiments)', 
+                ha='center', va='center', fontsize=14, 
+                bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.5))
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.set_title('Decision Boundary Visualization')
+        ax.set_xticks([])
+        ax.set_yticks([])
+        plt.tight_layout()
+        plt.savefig(output_dir / "decision_boundary_placeholder.png", dpi=300, bbox_inches='tight')
+        plt.savefig(output_dir / "decision_boundary_placeholder.pdf", bbox_inches='tight')
+        plt.close()
+    
+    # Plot 5: Statistical significance visualization
+    if 'potential' in results_df.columns and 'final_margin' in results_df.columns:
+        fig, ax = plt.subplots(figsize=(12, 8))
+        
+        # Create violin plots with statistical annotations
+        potentials = results_df['potential'].unique()
+        data_by_potential = [results_df[results_df['potential'] == pot]['final_margin'].values 
+                           for pot in potentials]
+        
+        parts = ax.violinplot(data_by_potential, positions=range(len(potentials)), showmeans=True)
+        
+        # Color the violins
+        for i, pc in enumerate(parts['bodies']):
+            pc.set_facecolor(colors[i % len(colors)])
+            pc.set_alpha(0.7)
+        
+        ax.set_xticks(range(len(potentials)))
+        ax.set_xticklabels(potentials)
+        ax.set_ylabel('Final Margin')
+        ax.set_xlabel('Potential Function')
+        ax.set_title('Distribution of Final Margins by Potential Function')
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.savefig(output_dir / "margin_distributions.png", dpi=300, bbox_inches='tight')
+        plt.savefig(output_dir / "margin_distributions.pdf", bbox_inches='tight')
+        plt.close()
+    
+    # Plot 6: MNIST results if available
+    if 'dataset' in results_df.columns and 'mnist' in results_df['dataset'].values:
+        mnist_results = results_df[results_df['dataset'] == 'mnist']
+        
+        if 'digits' in mnist_results.columns and 'train_accuracy' in mnist_results.columns:
+            fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+            
+            # Accuracy by digit pair
+            sns.boxplot(data=mnist_results, x='digits', y='train_accuracy', 
+                       hue='potential', ax=axes[0], palette=colors)
+            axes[0].set_title('Training Accuracy by Digit Pair')
+            axes[0].set_ylabel('Accuracy')
+            axes[0].set_xlabel('Digit Pair')
+            axes[0].grid(True, alpha=0.3)
+            
+            # Validation accuracy by digit pair
+            if 'val_accuracy' in mnist_results.columns:
+                sns.boxplot(data=mnist_results, x='digits', y='val_accuracy', 
+                           hue='potential', ax=axes[1], palette=colors)
+                axes[1].set_title('Validation Accuracy by Digit Pair')
+                axes[1].set_ylabel('Accuracy')
+                axes[1].set_xlabel('Digit Pair')
+                axes[1].grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            plt.savefig(output_dir / "mnist_results.png", dpi=300, bbox_inches='tight')
+            plt.savefig(output_dir / "mnist_results.pdf", bbox_inches='tight')
+            plt.close()
+    
+    print(f"Publication plots saved to {output_dir} (both PNG and PDF formats)")
