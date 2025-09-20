@@ -1,0 +1,22 @@
+# Quick test configuration for development
+# Minimal parameter combinations for fast testing
+
+dataset: synthetic
+input_dim: 2
+n_samples: 256
+separation: 2.0
+noise: 0.1
+epochs: 100
+lr: 0.1
+log_frequency: 10
+
+# Minimal grid for quick testing
+potentials: [quadratic, lp]
+p_values: [2.0, 3.0]  # Only used for lp potential
+depths: [1, 2]
+seeds: [0, 1]
+
+# Notes:
+# - This will create 2 * 2 * 2 * 2 = 16 experiments total
+# - Useful for testing the framework before running large experiments
+# - Should complete in a few minutes

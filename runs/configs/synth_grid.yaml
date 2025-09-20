@@ -1,0 +1,22 @@
+# Grid configuration for synthetic data experiments
+# This file specifies parameter combinations for systematic experiments
+
+dataset: synthetic
+input_dim: 2
+n_samples: 512
+separation: 3.0
+noise: 0.2
+epochs: 1000
+lr: 0.05
+log_frequency: 10
+
+# Grid parameters - will create cartesian product of all combinations
+potentials: [quadratic, lp, layer_scaled]
+p_values: [1.5, 2.0, 3.0]  # Only used for lp potential
+depths: [1, 2, 3]
+seeds: [0, 1, 2]
+
+# Notes:
+# - This will create 3 * 3 * 3 * 3 = 81 experiments total
+# - Each combination will be run with the specified parameters
+# - Results will be aggregated across seeds for statistical significance
