@@ -18,7 +18,7 @@ class Linear(nn.Module):
     in terms of implicit bias properties.
     """
     
-    def __init__(self, input_dim: int, output_dim: int = 1, bias: bool = True):
+    def __init__(self, input_dim: int, output_dim: int = 1, bias: bool = False):
         """
         Initialize linear layer.
         
@@ -54,6 +54,16 @@ class Linear(nn.Module):
             List containing the weight tensor
         """
         return [self.linear.weight.data]
+    
+    def effective_weight(self) -> torch.Tensor:
+        """
+        Return the effective weight for single linear layer.
+        For Linear model, this is just the weight itself.
+        
+        Returns:
+            Weight tensor
+        """
+        return self.linear.weight.data
 
 
 class DeepLinear(nn.Module):
@@ -70,7 +80,7 @@ class DeepLinear(nn.Module):
                  input_dim: int, 
                  hidden_dims: List[int],
                  output_dim: int = 1,
-                 bias: bool = True):
+                 bias: bool = False):
         """
         Initialize deep linear network.
         

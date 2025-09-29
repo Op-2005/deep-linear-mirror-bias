@@ -190,8 +190,14 @@ def run_single_experiment(params: Dict[str, Any], output_base: str, tag: str = N
     # Run experiment
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        exp_dir = result.stdout.strip().split('\n')[-1].split(': ')[-1]
-        return True, exp_dir
+        # Extract experiment directory from stdout
+        exp_dir_line = [line for line in result.stdout.split('\n') if "Experiment directory:" in line]
+        if exp_dir_line:
+            exp_dir = exp_dir_line[0].split(': ')[-1].strip()
+            return True, exp_dir
+        else:
+            print(f"Could not find experiment directory in stdout for params: {params}")
+            return False, ""
     except subprocess.CalledProcessError as e:
         print(f"Experiment failed with error: {e}")
         print(f"STDOUT: {e.stdout}")

@@ -47,7 +47,8 @@ from utils.experiment import (
     save_experiment_config,
     save_metrics_history,
     save_metrics_csv,
-    create_experiment_summary
+    create_experiment_summary,
+    get_version_stamp
 )
 
 
@@ -221,8 +222,9 @@ def main():
     # Create experiment directory
     exp_dir = make_experiment_dir(base=args.output_base, tag=args.tag)
     
-    # Save configuration
+    # Save configuration with version stamp
     config = vars(args)
+    config['version_stamp'] = get_version_stamp()
     save_experiment_config(config, exp_dir)
     
     print(f"Starting experiment with potential={args.potential}, L={args.L}")
@@ -301,6 +303,18 @@ def main():
         learning_rate=args.lr,
         normalize_md=args.normalize_md
     )
+    
+    # Learning rate sanity checks
+    if args.potential == 'lp' and args.p != 2.0:
+        # Lp potentials (p≠2) are more sensitive around 0
+        if args.lr > 0.1 and not args.normalize_md:
+            print(f"WARNING: Lp potential (p={args.p}) with high LR ({args.lr}) without normalization.")
+            print("Consider using --normalize_md flag or reducing learning rate.")
+        elif args.lr > 0.05:
+            print(f"INFO: Using LR {args.lr} for Lp potential (p={args.p}). Consider --normalize_md for stability.")
+    
+    if args.potential == 'scaled':
+        print("INFO: Using 'scaled' potential with dual clipping enabled for stability.")
     
     # Loss function - use BCE with logits for binary classification
     criterion = nn.BCEWithLogitsLoss()

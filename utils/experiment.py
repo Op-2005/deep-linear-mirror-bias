@@ -8,6 +8,9 @@ saving results, and ensuring reproducibility in the Mirror Descent research fram
 import os
 import json
 import yaml
+import subprocess
+import sys
+import platform
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, Union
@@ -118,6 +121,45 @@ def set_seeds(seed: int) -> None:
     os.environ['PYTHONHASHSEED'] = str(seed)
     
     print(f"Set random seeds to {seed}")
+
+
+def get_version_stamp() -> Dict[str, Any]:
+    """
+    Generate version stamp for reproducibility.
+    
+    Returns:
+        Dictionary containing version information
+    """
+    version_info = {
+        'timestamp': datetime.now().isoformat(),
+        'python_version': sys.version,
+        'platform': platform.platform(),
+        'torch_version': torch.__version__,
+        'numpy_version': np.__version__,
+        'sklearn_version': sklearn.__version__
+    }
+    
+    # Try to get git commit hash
+    try:
+        git_hash = subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'], 
+            stderr=subprocess.DEVNULL
+        ).decode('utf-8').strip()
+        version_info['git_commit'] = git_hash
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        version_info['git_commit'] = 'unknown'
+    
+    # Try to get git status
+    try:
+        git_status = subprocess.check_output(
+            ['git', 'status', '--porcelain'], 
+            stderr=subprocess.DEVNULL
+        ).decode('utf-8').strip()
+        version_info['git_dirty'] = len(git_status) > 0
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        version_info['git_dirty'] = 'unknown'
+    
+    return version_info
 
 
 def load_json(path: Union[str, Path]) -> Any:

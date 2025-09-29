@@ -1,0 +1,24 @@
+# Calibration tests for systematic validation
+# Tests the three key scenarios as outlined in the requirements
+
+dataset: synthetic
+input_dim: 2
+n_samples: 256
+separation: 3.0
+noise: 0.1
+epochs: 100
+lr: 0.05
+log_frequency: 10
+
+# Calibration test parameters
+potentials: [quadratic, lp, layer_scaled]
+p_values: [1.5, 3.0]  # Only used for lp potential
+depths: [1, 2]
+seeds: [0, 1, 2]  # Multiple seeds for statistical validation
+
+# Notes:
+# - Quadratic: L=1 vs L=2 should have angles ≈ 0° (deep ≈ shallow ≈ SVM)
+# - Lp (p=1.5, 3.0): L=2 should have non-zero angles vs SVM/linear MD
+# - Layer-scaled: L=2 should have larger angles vs SVM, norm_balance > 1
+# - Expected runtime: 5-10 minutes
+# - Validates the core pipeline before full experiments

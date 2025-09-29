@@ -38,14 +38,16 @@ def margin(u: torch.Tensor, X: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
 def angle(u: torch.Tensor, v: torch.Tensor) -> float:
     """
-    Compute angle between two vectors in degrees, with safe clamping.
+    Compute acute angle between two vectors in degrees, with safe clamping.
+    Uses acute-angle convention: min(angle(u,v), angle(u,-v)) to avoid
+    fake ~180° "disagreements" that are just flipped signs.
     
     Args:
         u: First vector
         v: Second vector
         
     Returns:
-        Angle in degrees
+        Acute angle in degrees (0° to 90°)
     """
     # Ensure both vectors are flattened
     u = u.flatten()
@@ -61,7 +63,10 @@ def angle(u: torch.Tensor, v: torch.Tensor) -> float:
     angle_rad = torch.acos(cos_sim)
     angle_deg = angle_rad * 180.0 / torch.pi
     
-    return angle_deg.item()
+    # Acute-angle convention: take the smaller of the two possible angles
+    acute_angle = min(angle_deg.item(), 180.0 - angle_deg.item())
+    
+    return acute_angle
 
 
 def angles_to_baselines(u: torch.Tensor, 

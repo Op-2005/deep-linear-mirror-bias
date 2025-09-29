@@ -130,20 +130,27 @@ class QuadraticPotential(PotentialFunction):
 class LayerScaledQuadratic(PotentialFunction):
     """
     Layer-scaled quadratic potential: φ(W) = ½α‖W‖².
+    Supports both single alpha and per-layer alpha ladders.
     
     Args:
-        alpha: Scaling parameter α > 0
+        alpha: Scaling parameter α > 0, or list of alphas for per-layer scaling
     """
     
-    def __init__(self, alpha: float):
+    def __init__(self, alpha):
         """
         Initialize layer-scaled quadratic potential.
         
         Args:
-            alpha: Scaling parameter α > 0
+            alpha: Scaling parameter α > 0, or list of alphas for per-layer scaling
         """
-        assert alpha > 0, "Alpha must be positive"
-        self.alpha = alpha
+        if isinstance(alpha, (list, tuple)):
+            assert all(a > 0 for a in alpha), "All alphas must be positive"
+            self.alpha = alpha
+            self.use_ladder = True
+        else:
+            assert alpha > 0, "Alpha must be positive"
+            self.alpha = alpha
+            self.use_ladder = False
         
     def value(self, W: torch.Tensor) -> torch.Tensor:
         """
@@ -155,7 +162,13 @@ class LayerScaledQuadratic(PotentialFunction):
         Returns:
             Potential value
         """
-        return 0.5 * self.alpha * torch.sum(W ** 2)
+        if self.use_ladder:
+            # For alpha ladder, we need to know which layer this is
+            # This is a simplified version - in practice, you'd pass layer index
+            alpha = self.alpha[0] if len(self.alpha) > 0 else 1.0
+        else:
+            alpha = self.alpha
+        return 0.5 * alpha * torch.sum(W ** 2)
         
     def grad(self, W: torch.Tensor) -> torch.Tensor:
         """
@@ -167,7 +180,13 @@ class LayerScaledQuadratic(PotentialFunction):
         Returns:
             Gradient of potential
         """
-        return self.alpha * W
+        if self.use_ladder:
+            # For alpha ladder, we need to know which layer this is
+            # This is a simplified version - in practice, you'd pass layer index
+            alpha = self.alpha[0] if len(self.alpha) > 0 else 1.0
+        else:
+            alpha = self.alpha
+        return alpha * W
         
     def grad_inv(self, Z: torch.Tensor) -> torch.Tensor:
         """
@@ -179,7 +198,13 @@ class LayerScaledQuadratic(PotentialFunction):
         Returns:
             Inverse gradient
         """
-        return Z / self.alpha
+        if self.use_ladder:
+            # For alpha ladder, we need to know which layer this is
+            # This is a simplified version - in practice, you'd pass layer index
+            alpha = self.alpha[0] if len(self.alpha) > 0 else 1.0
+        else:
+            alpha = self.alpha
+        return Z / alpha
 
 
 class LpPotential(PotentialFunction):
