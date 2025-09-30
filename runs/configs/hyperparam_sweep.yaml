@@ -1,0 +1,29 @@
+# Targeted hyperparameter sweep to validate AC-1 to AC-3
+
+dataset: synthetic
+input_dim: 2
+n_samples: 512
+separation: 4.0        # stronger separation for clearer geometry
+noise: 0.0             # noiseless to study asymptotic angles
+epochs: 2000           # long enough for directional convergence
+lr: 0.02               # stable across lp, consider --normalize_md for lp
+log_frequency: 50
+
+# Potentials to compare
+potentials: [quadratic, lp, layer_scaled]
+
+# Lp potential sweep (extreme p values to surface divergence)
+p_values: [1.1, 1.3, 4.0, 5.0]
+
+# Depths (L=1 vs L=2 captures AC-1; L=2 for lp/layer_scaled sufficient for AC-2/3)
+depths: [1, 2]
+
+# Seeds for robustness
+seeds: [0, 1]
+
+# Notes:
+# - Single config drives all combinations; epochs set high to satisfy quadratic/layer-scaled needs.
+# - Lp runs benefit from --normalize_md; training script warns if not enabled.
+# - Layer-scaled currently uses a single alpha; emulate ladders via future CLI if needed.
+# - Total experiments ≈ 3 potentials × 4 p × 2 depths × 2 seeds = 48.
+
